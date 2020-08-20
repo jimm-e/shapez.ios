@@ -16,5 +16,4 @@ steps:
     scheme: ''
     sdk: 'iphoneos'
     configuration: 'Release'
-    xcWorkspacePath: 'shapezios.xcodeproj'
     xcodeVersion: 'default' # Options: 8, 9, 10, default, specifyPath
