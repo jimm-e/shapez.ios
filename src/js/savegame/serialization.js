@@ -1,9 +1,11 @@
-import { JSON_stringify } from "../core/builtins";
+import { createLogger } from "../core/logging";
 import {
     BaseDataType,
     TypeArray,
     TypeBoolean,
     TypeClass,
+    TypeClassData,
+    TypeClassFromMetaclass,
     TypeClassId,
     TypeEntity,
     TypeEntityWeakref,
@@ -18,12 +20,9 @@ import {
     TypePositiveInteger,
     TypePositiveNumber,
     TypeString,
-    TypeVector,
-    TypeClassFromMetaclass,
-    TypeClassData,
     TypeStructuredObject,
+    TypeVector,
 } from "./serialization_data_types";
-import { createLogger } from "../core/logging";
 
 const logger = createLogger("serialization");
 
@@ -70,9 +69,10 @@ export const types = {
 
     /**
      * @param {FactoryTemplate<*>} registry
+     * @param {(GameRoot, any) => object=} resolver
      */
-    obj(registry) {
-        return new TypeClass(registry);
+    obj(registry, resolver = null) {
+        return new TypeClass(registry, resolver);
     },
 
     /**
@@ -191,12 +191,18 @@ export class BasicSerializableObject {
         );
     }
 
-    /** @returns {string|void} */
-    deserialize(data) {
+    /**
+     * @param {any} data
+     * @param {import("./savegame_serializer").GameRoot} root
+     * @returns {string|void}
+     */
+    deserialize(data, root = null) {
         return deserializeSchema(
             this,
             /** @type {typeof BasicSerializableObject} */ (this.constructor).getCachedSchema(),
-            data
+            data,
+            null,
+            root
         );
     }
 
@@ -223,7 +229,7 @@ export function serializeSchema(obj, schema, mergeWith = {}) {
             );
         }
         if (!schema[key]) {
-            assert(false, "Invalid schema (bad key '" + key + "'): " + JSON_stringify(schema));
+            assert(false, "Invalid schema (bad key '" + key + "'): " + JSON.stringify(schema));
         }
 
         if (G_IS_DEV) {
@@ -254,9 +260,10 @@ export function serializeSchema(obj, schema, mergeWith = {}) {
  * @param {Schema} schema The schema to use
  * @param {object} data The serialized data
  * @param {string|void|null=} baseclassErrorResult Convenience, if this is a string error code, do nothing and return it
+ * @param {import("../game/root").GameRoot=} root Optional game root reference
  * @returns {string|void} String error code or nothing on success
  */
-export function deserializeSchema(obj, schema, data, baseclassErrorResult = null) {
+export function deserializeSchema(obj, schema, data, baseclassErrorResult = null, root) {
     if (baseclassErrorResult) {
         return baseclassErrorResult;
     }
@@ -276,7 +283,7 @@ export function deserializeSchema(obj, schema, data, baseclassErrorResult = null
             return "Non-nullable entry is null: " + key + " of class " + obj.constructor.name;
         }
 
-        const errorStatus = schema[key].deserializeWithVerify(data[key], obj, key, obj.root);
+        const errorStatus = schema[key].deserializeWithVerify(data[key], obj, key, obj.root || root);
         if (errorStatus) {
             logger.error(
                 "Deserialization failed with error '" + errorStatus + "' on object",

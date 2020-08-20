@@ -1,7 +1,7 @@
-import { Component } from "../component";
 import { types } from "../../savegame/serialization";
-import { gItemRegistry } from "../../core/global_registries";
 import { BaseItem } from "../base_item";
+import { Component } from "../component";
+import { typeItemSingleton } from "../item_resolver";
 import { ColorItem } from "../items/color_item";
 import { ShapeItem } from "../items/shape_item";
 
@@ -12,10 +12,8 @@ export class StorageComponent extends Component {
 
     static getSchema() {
         return {
-            maximumStorage: types.uint,
             storedCount: types.uint,
-            storedItem: types.nullable(types.obj(gItemRegistry)),
-            overlayOpacity: types.ufloat,
+            storedItem: types.nullable(typeItemSingleton),
         };
     }
 
@@ -60,18 +58,32 @@ export class StorageComponent extends Component {
             return true;
         }
 
-        if (item instanceof ColorItem) {
-            return this.storedItem instanceof ColorItem && this.storedItem.color === item.color;
+        const itemType = item.getItemType();
+
+        // Check type matches
+        if (itemType !== this.storedItem.getItemType()) {
+            return false;
         }
 
-        if (item instanceof ShapeItem) {
+        if (itemType === "color") {
+            return /** @type {ColorItem} */ (this.storedItem).color === /** @type {ColorItem} */ (item).color;
+        }
+
+        if (itemType === "shape") {
             return (
-                this.storedItem instanceof ShapeItem &&
-                this.storedItem.definition.getHash() === item.definition.getHash()
+                /** @type {ShapeItem} */ (this.storedItem).definition.getHash() ===
+                /** @type {ShapeItem} */ (item).definition.getHash()
             );
         }
-
         return false;
+    }
+
+    /**
+     * Returns whether the storage is full
+     * @returns {boolean}
+     */
+    getIsFull() {
+        return this.storedCount >= this.maximumStorage;
     }
 
     /**

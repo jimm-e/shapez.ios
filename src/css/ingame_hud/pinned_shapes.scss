@@ -18,6 +18,7 @@
         @include S(margin-bottom, 4px);
         color: #333438;
         // text-shadow: #{D(1px)} #{D(1px)} 0 rgba(0, 10, 20, 0.2);
+        filter: drop-shadow(#{D(1px)} #{D(1px)} 0 rgba(0, 10, 20, 0.2));
 
         &.unpinable {
             > canvas {
@@ -33,10 +34,12 @@
             grid-row: 1 / 3;
             pointer-events: all;
             transition: transform 0.1s ease-in-out;
+            transform-origin: D(2px) center;
+            will-change: transform;
             position: relative;
             z-index: 20;
             &:hover {
-                transform: scale(2) translateX(#{D(5px)});
+                transform: scale(2);
                 z-index: 21;
             }
         }
@@ -70,6 +73,24 @@
             align-self: end;
             justify-self: start;
             grid-row: 1 / 2;
+        }
+
+        > .infoButton {
+            @include S(width, 8px);
+            @include S(height, 8px);
+            background: uiResource("icons/info_button.png") center center / 95% no-repeat;
+            position: absolute;
+            opacity: 0.7;
+            @include S(top, 13px);
+            @include S(left, -7px);
+            @include DarkThemeInvert;
+            @include IncreasedClickArea(2px);
+            transition: opacity 0.12s ease-in-out;
+            z-index: 100;
+
+            &:hover {
+                opacity: 0.8;
+            }
         }
 
         &.goal,

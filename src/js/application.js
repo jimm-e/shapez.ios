@@ -1,6 +1,5 @@
 import { AnimationFrame } from "./core/animation_frame";
 import { BackgroundResourcesLoader } from "./core/background_resources_loader";
-import { performanceNow } from "./core/builtins";
 import { IS_MOBILE } from "./core/config";
 import { GameState } from "./core/game_state";
 import { GLOBAL_APP, setGlobalApp } from "./core/globals";
@@ -15,13 +14,9 @@ import { AdProviderInterface } from "./platform/ad_provider";
 import { NoAdProvider } from "./platform/ad_providers/no_ad_provider";
 import { AnalyticsInterface } from "./platform/analytics";
 import { GoogleAnalyticsImpl } from "./platform/browser/google_analytics";
-import { NoGameAnalytics } from "./platform/browser/no_game_analytics";
 import { SoundImplBrowser } from "./platform/browser/sound";
 import { PlatformWrapperImplBrowser } from "./platform/browser/wrapper";
 import { PlatformWrapperImplElectron } from "./platform/electron/wrapper";
-import { GameAnalyticsInterface } from "./platform/game_analytics";
-import { SoundInterface } from "./platform/sound";
-import { StorageInterface } from "./platform/storage";
 import { PlatformWrapperInterface } from "./platform/wrapper";
 import { ApplicationSettings } from "./profile/application_settings";
 import { SavegameManager } from "./savegame/savegame_manager";
@@ -33,6 +28,13 @@ import { MainMenuState } from "./states/main_menu";
 import { MobileWarningState } from "./states/mobile_warning";
 import { PreloadState } from "./states/preload";
 import { SettingsState } from "./states/settings";
+import { ShapezGameAnalytics } from "./platform/browser/game_analytics";
+
+/**
+ * @typedef {import("./platform/game_analytics").GameAnalyticsInterface} GameAnalyticsInterface
+ * @typedef {import("./platform/sound").SoundInterface} SoundInterface
+ * @typedef {import("./platform/storage").StorageInterface} StorageInterface
+ */
 
 const logger = createLogger("application");
 
@@ -130,8 +132,7 @@ export class Application {
         this.adProvider = new NoAdProvider(this);
         this.sound = new SoundImplBrowser(this);
         this.analytics = new GoogleAnalyticsImpl(this);
-        // this.gameAnalytics = new ShapezGameAnalytics(this);
-        this.gameAnalytics = new NoGameAnalytics(this);
+        this.gameAnalytics = new ShapezGameAnalytics(this);
     }
 
     /**
@@ -356,7 +357,7 @@ export class Application {
             return;
         }
 
-        const time = performanceNow();
+        const time = performance.now();
 
         // Periodically check for resizes, this is expensive (takes 2-3ms so only do it once in a while!)
         if (!this.lastResizeCheck || time - this.lastResizeCheck > 1000) {
@@ -386,7 +387,7 @@ export class Application {
             }
 
             const scale = this.getEffectiveUiScale();
-            waitNextFrame().then(() => document.documentElement.style.setProperty("--ui-scale", scale));
+            waitNextFrame().then(() => document.documentElement.style.setProperty("--ui-scale", `${scale}`));
             window.focus();
         }
     }

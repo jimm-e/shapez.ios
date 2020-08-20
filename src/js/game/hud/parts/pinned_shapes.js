@@ -1,6 +1,5 @@
-import { Math_max } from "../../../core/builtins";
 import { ClickDetector } from "../../../core/click_detector";
-import { formatBigNumber, makeDiv, arrayDelete, arrayDeleteValue } from "../../../core/utils";
+import { formatBigNumber, makeDiv, arrayDeleteValue } from "../../../core/utils";
 import { ShapeDefinition } from "../../shape_definition";
 import { BaseHUDPart } from "../base_hud_part";
 import { blueprintShape, UPGRADES } from "../../upgrades";
@@ -26,7 +25,8 @@ export class HUDPinnedShapes extends BaseHUDPart {
          *  amountLabel: HTMLElement,
          *  lastRenderedValue: string,
          *  element: HTMLElement,
-         *  detector?: ClickDetector
+         *  detector?: ClickDetector,
+         *  infoDetector?: ClickDetector
          * }>}
          */
         this.handles = [];
@@ -155,6 +155,10 @@ export class HUDPinnedShapes extends BaseHUDPart {
             if (detector) {
                 detector.cleanup();
             }
+            const infoDetector = this.handles[i].infoDetector;
+            if (infoDetector) {
+                infoDetector.cleanup();
+            }
         }
         this.handles = [];
 
@@ -198,11 +202,23 @@ export class HUDPinnedShapes extends BaseHUDPart {
             detector = new ClickDetector(element, {
                 consumeEvents: true,
                 preventDefault: true,
+                targetOnly: true,
             });
             detector.click.add(() => this.unpinShape(key));
         } else {
             element.classList.add("marked");
         }
+
+        // Show small info icon
+        const infoButton = document.createElement("button");
+        infoButton.classList.add("infoButton");
+        element.appendChild(infoButton);
+        const infoDetector = new ClickDetector(infoButton, {
+            consumeEvents: true,
+            preventDefault: true,
+            targetOnly: true,
+        });
+        infoDetector.click.add(() => this.root.hud.signals.viewShapeDetailsRequested.dispatch(definition));
 
         const amountLabel = makeDiv(element, null, ["amountLabel"], "");
 
@@ -216,6 +232,8 @@ export class HUDPinnedShapes extends BaseHUDPart {
             element,
             amountLabel,
             lastRenderedValue: "",
+            detector,
+            infoDetector,
         });
     }
 

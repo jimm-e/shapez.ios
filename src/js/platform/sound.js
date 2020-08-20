@@ -22,12 +22,13 @@ export const SOUNDS = {
 
     levelComplete: "level_complete",
 
+    destroyBuilding: "destroy_building",
     placeBuilding: "place_building",
     placeBelt: "place_belt",
 };
 
 export const MUSIC = {
-    theme: "theme",
+    theme: G_IS_STANDALONE ? "theme-full" : "theme-short",
     menu: "menu",
 };
 

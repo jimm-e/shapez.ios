@@ -3,11 +3,14 @@ import { createLogger } from "../core/logging";
 import { ReadWriteProxy } from "../core/read_write_proxy";
 import { globalConfig } from "../core/config";
 import { Savegame } from "./savegame";
-import { Math_floor } from "../core/builtins";
-
 const logger = createLogger("savegame_manager");
 
 const Rusha = require("rusha");
+
+/**
+ * @typedef {import("./savegame_typedefs").SavegamesData} SavegamesData
+ * @typedef {import("./savegame_typedefs").SavegameMetadata} SavegameMetadata
+ */
 
 /** @enum {string} */
 export const enumLocalSavegameStatus = {
@@ -15,25 +18,10 @@ export const enumLocalSavegameStatus = {
     synced: "synced",
 };
 
-/**
- * @typedef {{
- *   lastUpdate: number,
- *   version: number,
- *   internalId: string,
- *   level: number
- * }} SavegameMetadata
- *
- * @typedef {{
- *   version: number,
- *   savegames: Array<SavegameMetadata>
- * }} SavegamesData
- */
-
 export class SavegameManager extends ReadWriteProxy {
     constructor(app) {
         super(app, "savegames.bin");
 
-        /** @type {SavegamesData} */
         this.currentData = this.getDefaultData();
     }
 

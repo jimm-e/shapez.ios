@@ -13,8 +13,15 @@ import { LANGUAGES } from "../languages";
 
 const logger = createLogger("application_settings");
 
-const categoryGame = "game";
-const categoryApp = "app";
+/**
+ * @enum {string}
+ */
+export const enumCategories = {
+    general: "general",
+    userInterface: "userInterface",
+    performance: "performance",
+    advanced: "advanced",
+};
 
 export const uiScales = [
     {
@@ -89,13 +96,40 @@ export const movementSpeeds = [
     },
 ];
 
+export const autosaveIntervals = [
+    {
+        id: "one_minute",
+        seconds: 60,
+    },
+    {
+        id: "two_minutes",
+        seconds: 120,
+    },
+    {
+        id: "five_minutes",
+        seconds: 5 * 60,
+    },
+    {
+        id: "ten_minutes",
+        seconds: 10 * 60,
+    },
+    {
+        id: "twenty_minutes",
+        seconds: 20 * 60,
+    },
+    {
+        id: "disabled",
+        seconds: null,
+    },
+];
+
 /** @type {Array<BaseSetting>} */
 export const allApplicationSettings = [
     new EnumSetting("language", {
         options: Object.keys(LANGUAGES),
         valueGetter: key => key,
         textGetter: key => LANGUAGES[key].name,
-        category: categoryApp,
+        category: enumCategories.general,
         restartRequired: true,
         changeCb: (app, id) => null,
         magicValue: "auto-detect",
@@ -105,7 +139,7 @@ export const allApplicationSettings = [
         options: uiScales.sort((a, b) => a.size - b.size),
         valueGetter: scale => scale.id,
         textGetter: scale => T.settings.labels.uiScale.scales[scale.id],
-        category: categoryApp,
+        category: enumCategories.userInterface,
         restartRequired: false,
         changeCb:
             /**
@@ -115,8 +149,25 @@ export const allApplicationSettings = [
     }),
 
     new BoolSetting(
+        "soundsMuted",
+        enumCategories.general,
+        /**
+         * @param {Application} app
+         */
+        (app, value) => app.sound.setSoundsMuted(value)
+    ),
+    new BoolSetting(
+        "musicMuted",
+        enumCategories.general,
+        /**
+         * @param {Application} app
+         */
+        (app, value) => app.sound.setMusicMuted(value)
+    ),
+
+    new BoolSetting(
         "fullscreen",
-        categoryApp,
+        enumCategories.general,
         /**
          * @param {Application} app
          */
@@ -129,30 +180,21 @@ export const allApplicationSettings = [
     ),
 
     new BoolSetting(
-        "soundsMuted",
-        categoryApp,
+        "enableColorBlindHelper",
+        enumCategories.general,
         /**
          * @param {Application} app
          */
-        (app, value) => app.sound.setSoundsMuted(value)
-    ),
-    new BoolSetting(
-        "musicMuted",
-        categoryApp,
-        /**
-         * @param {Application} app
-         */
-        (app, value) => app.sound.setMusicMuted(value)
+        (app, value) => null
     ),
 
-    // GAME
-    new BoolSetting("offerHints", categoryGame, (app, value) => {}),
+    new BoolSetting("offerHints", enumCategories.userInterface, (app, value) => {}),
 
     new EnumSetting("theme", {
         options: Object.keys(THEMES),
         valueGetter: theme => theme,
         textGetter: theme => T.settings.labels.theme.themes[theme],
-        category: categoryGame,
+        category: enumCategories.userInterface,
         restartRequired: false,
         changeCb:
             /**
@@ -165,21 +207,24 @@ export const allApplicationSettings = [
         enabled: !IS_DEMO,
     }),
 
-    new EnumSetting("refreshRate", {
-        options: ["60", "100", "144", "165", "250", "500"],
-        valueGetter: rate => rate,
-        textGetter: rate => rate + " Hz",
-        category: categoryGame,
+    new EnumSetting("autosaveInterval", {
+        options: autosaveIntervals,
+        valueGetter: interval => interval.id,
+        textGetter: interval => T.settings.labels.autosaveInterval.intervals[interval.id],
+        category: enumCategories.advanced,
         restartRequired: false,
-        changeCb: (app, id) => {},
-        enabled: !IS_DEMO,
+        changeCb:
+            /**
+             * @param {Application} app
+             */
+            (app, id) => null,
     }),
 
     new EnumSetting("scrollWheelSensitivity", {
         options: scrollWheelSensitivities.sort((a, b) => a.scale - b.scale),
         valueGetter: scale => scale.id,
         textGetter: scale => T.settings.labels.scrollWheelSensitivity.sensitivity[scale.id],
-        category: categoryGame,
+        category: enumCategories.advanced,
         restartRequired: false,
         changeCb:
             /**
@@ -192,15 +237,31 @@ export const allApplicationSettings = [
         options: movementSpeeds.sort((a, b) => a.multiplier - b.multiplier),
         valueGetter: multiplier => multiplier.id,
         textGetter: multiplier => T.settings.labels.movementSpeed.speeds[multiplier.id],
-        category: categoryGame,
+        category: enumCategories.advanced,
         restartRequired: false,
         changeCb: (app, id) => {},
     }),
 
-    new BoolSetting("alwaysMultiplace", categoryGame, (app, value) => {}),
-    new BoolSetting("enableTunnelSmartplace", categoryGame, (app, value) => {}),
-    new BoolSetting("vignette", categoryGame, (app, value) => {}),
-    new BoolSetting("compactBuildingInfo", categoryGame, (app, value) => {}),
+    new BoolSetting("alwaysMultiplace", enumCategories.advanced, (app, value) => {}),
+    new BoolSetting("enableTunnelSmartplace", enumCategories.advanced, (app, value) => {}),
+    new BoolSetting("vignette", enumCategories.userInterface, (app, value) => {}),
+    new BoolSetting("compactBuildingInfo", enumCategories.userInterface, (app, value) => {}),
+    new BoolSetting("disableCutDeleteWarnings", enumCategories.advanced, (app, value) => {}),
+    new BoolSetting("rotationByBuilding", enumCategories.advanced, (app, value) => {}),
+
+    new EnumSetting("refreshRate", {
+        options: ["60", "75", "100", "120", "144", "165", "250", "500"],
+        valueGetter: rate => rate,
+        textGetter: rate => rate + " Hz",
+        category: enumCategories.performance,
+        restartRequired: false,
+        changeCb: (app, id) => {},
+        enabled: !IS_DEMO,
+    }),
+
+    new BoolSetting("lowQualityMapResources", enumCategories.performance, (app, value) => {}),
+    new BoolSetting("disableTileGrid", enumCategories.performance, (app, value) => {}),
+    new BoolSetting("lowQualityTextures", enumCategories.performance, (app, value) => {}),
 ];
 
 export function getApplicationSettingById(id) {
@@ -219,12 +280,21 @@ class SettingsStorage {
         this.scrollWheelSensitivity = "regular";
         this.movementSpeed = "regular";
         this.language = "auto-detect";
+        this.autosaveInterval = "two_minutes";
 
         this.alwaysMultiplace = false;
         this.offerHints = true;
         this.enableTunnelSmartplace = true;
         this.vignette = true;
         this.compactBuildingInfo = false;
+        this.disableCutDeleteWarnings = false;
+        this.rotationByBuilding = true;
+
+        this.enableColorBlindHelper = false;
+
+        this.lowQualityMapResources = false;
+        this.disableTileGrid = false;
+        this.lowQualityTextures = false;
 
         /**
          * @type {Object.<string, number>}
@@ -317,6 +387,17 @@ export class ApplicationSettings extends ReadWriteProxy {
         }
         logger.error("Unknown movement speed id:", id);
         return 1;
+    }
+
+    getAutosaveIntervalSeconds() {
+        const id = this.getAllSettings().autosaveInterval;
+        for (let i = 0; i < autosaveIntervals.length; ++i) {
+            if (autosaveIntervals[i].id === id) {
+                return autosaveIntervals[i].seconds;
+            }
+        }
+        logger.error("Unknown autosave interval id:", id);
+        return 120;
     }
 
     getIsFullScreen() {
@@ -414,7 +495,7 @@ export class ApplicationSettings extends ReadWriteProxy {
     }
 
     getCurrentVersion() {
-        return 13;
+        return 21;
     }
 
     /** @param {{settings: SettingsStorage, version: number}} data */
@@ -464,6 +545,47 @@ export class ApplicationSettings extends ReadWriteProxy {
         if (data.version < 13) {
             data.settings.compactBuildingInfo = false;
             data.version = 13;
+        }
+
+        if (data.version < 14) {
+            data.settings.disableCutDeleteWarnings = false;
+            data.version = 14;
+        }
+
+        if (data.version < 15) {
+            data.settings.autosaveInterval = "two_minutes";
+            data.version = 15;
+        }
+
+        if (data.version < 16) {
+            // RE-ENABLE this setting, it already existed
+            data.settings.enableTunnelSmartplace = true;
+            data.version = 16;
+        }
+
+        if (data.version < 17) {
+            data.settings.enableColorBlindHelper = false;
+            data.version = 17;
+        }
+
+        if (data.version < 18) {
+            data.settings.rotationByBuilding = true;
+            data.version = 18;
+        }
+
+        if (data.version < 19) {
+            data.settings.lowQualityMapResources = false;
+            data.version = 19;
+        }
+
+        if (data.version < 20) {
+            data.settings.disableTileGrid = false;
+            data.version = 20;
+        }
+
+        if (data.version < 21) {
+            data.settings.lowQualityTextures = false;
+            data.version = 21;
         }
 
         return ExplainedResult.good();

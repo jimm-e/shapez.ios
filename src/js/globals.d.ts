@@ -1,7 +1,6 @@
 // Globals defined by webpack
 
 declare const G_IS_DEV: boolean;
-declare const G_IS_PROD: boolean;
 declare function assert(condition: boolean | object | string, ...errorMessage: string[]): void;
 declare function assertAlways(condition: boolean | object | string, ...errorMessage: string[]): void;
 
@@ -35,11 +34,6 @@ declare interface CanvasRenderingContext2D {
     msImageSmoothingEnabled: boolean;
     mozImageSmoothingEnabled: boolean;
     webkitImageSmoothingEnabled: boolean;
-}
-
-declare interface HTMLCanvasElement {
-    opaque: boolean;
-    webkitOpaque: boolean;
 }
 
 // Just for compatibility with the shared code
@@ -128,13 +122,6 @@ declare interface NodeRequire {
     context(src: string, flag: boolean, regexp: RegExp): WebpackContext;
 }
 
-// HTML Element
-declare interface Element {
-    style: any;
-    innerText: string;
-    innerHTML: string;
-}
-
 declare interface Object {
     entries(obj: object): Array<[string, any]>;
 }
@@ -144,22 +131,24 @@ declare interface Math {
     degrees(number): number;
 }
 
+declare type Class<T = unknown> = new (...args: any[]) => T;
+
 declare interface String {
     padStart(size: number, fill?: string): string;
     padEnd(size: number, fill: string): string;
 }
 
 declare interface FactoryTemplate<T> {
-    entries: Array<new (...args: any[]) => T>;
+    entries: Array<Class<T>>;
     entryIds: Array<string>;
     idToEntry: any;
 
     getId(): string;
     getAllIds(): Array<string>;
-    register(entry: new (...args: any[]) => T): void;
+    register(entry: Class<T>): void;
     hasId(id: string): boolean;
-    findById(id: string): new (...args: any[]) => T;
-    getEntries(): Array<new (...args: any[]) => T>;
+    findById(id: string): Class<T>;
+    getEntries(): Array<Class<T>>;
     getNumEntries(): number;
 }
 
@@ -169,10 +158,10 @@ declare interface SingletonFactoryTemplate<T> {
 
     getId(): string;
     getAllIds(): Array<string>;
-    register(classHandle: new (...args: any[]) => T): void;
+    register(classHandle: Class<T>): void;
     hasId(id: string): boolean;
     findById(id: string): T;
-    findByClass(classHandle: new (...args: any[]) => T): T;
+    findByClass(classHandle: Class<T>): T;
     getEntries(): Array<T>;
     getNumEntries(): number;
 }
@@ -202,4 +191,15 @@ declare interface TypedSignal<T extends Array<any>> {
     dispatch(...args: T): /* STOP_PROPAGATION */ string | void;
 
     removeAll();
+}
+
+declare type Layer = "regular" | "wires";
+declare type ItemType = "shape" | "color" | "boolean";
+
+declare module "worker-loader?inline=true&fallback=false!*" {
+    class WebpackWorker extends Worker {
+        constructor();
+    }
+
+    export default WebpackWorker;
 }

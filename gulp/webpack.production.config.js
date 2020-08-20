@@ -2,14 +2,12 @@
 
 const path = require("path");
 const webpack = require("webpack");
-const utils = require("./buildutils");
+const { getRevision, getVersion, getAllResourceImages } = require("./buildutils");
 const lzString = require("lz-string");
 
 const TerserPlugin = require("terser-webpack-plugin");
 const StringReplacePlugin = require("string-replace-webpack-plugin");
-// const BundleAnalyzerPlugin = require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
 const UnusedFilesPlugin = require("unused-files-webpack-plugin").UnusedFilesWebpackPlugin;
-// const SpeedMeasurePlugin = require("speed-measure-webpack-plugin");
 
 module.exports = ({
     enableAssert = false,
@@ -24,7 +22,6 @@ module.exports = ({
         assertAlways: "window.assert",
         abstract: "window.assert(false, 'abstract method called');",
         G_IS_DEV: "false",
-        G_IS_PROD: "true",
         G_IS_RELEASE: environment === "prod" ? "true" : "false",
         G_IS_STANDALONE: standalone ? "true" : "false",
         G_IS_BROWSER: isBrowser ? "true" : "false",
@@ -35,9 +32,9 @@ module.exports = ({
         G_APP_ENVIRONMENT: JSON.stringify(environment),
         G_HAVE_ASSERT: enableAssert ? "true" : "false",
         G_BUILD_TIME: "" + new Date().getTime(),
-        G_BUILD_COMMIT_HASH: JSON.stringify(utils.getRevision()),
-        G_BUILD_VERSION: JSON.stringify(utils.getVersion()),
-        G_ALL_UI_IMAGES: JSON.stringify(utils.getAllResourceImages()),
+        G_BUILD_COMMIT_HASH: JSON.stringify(getRevision()),
+        G_BUILD_VERSION: JSON.stringify(getVersion()),
+        G_ALL_UI_IMAGES: JSON.stringify(getAllResourceImages()),
     };
 
     const minifyNames = environment === "prod";
@@ -106,6 +103,8 @@ module.exports = ({
                             passes: 2,
                             module: true,
                             pure_funcs: [
+                                "Math.radians",
+                                "Math.degrees",
                                 "Math.round",
                                 "Math.ceil",
                                 "Math.floor",
@@ -120,21 +119,6 @@ module.exports = ({
                                 "Math.sign",
                                 "Math.pow",
                                 "Math.atan2",
-
-                                "Math_round",
-                                "Math_ceil",
-                                "Math_floor",
-                                "Math_sqrt",
-                                "Math_hypot",
-                                "Math_abs",
-                                "Math_max",
-                                "Math_min",
-                                "Math_sin",
-                                "Math_cos",
-                                "Math_tan",
-                                "Math_sign",
-                                "Math_pow",
-                                "Math_atan2",
                             ],
                             toplevel: true,
                             unsafe_math: true,
@@ -157,9 +141,9 @@ module.exports = ({
                             ecma: es6 ? 6 : 5,
                             preamble:
                                 "/* shapez.io Codebase - Copyright 2020 Tobias Springer - " +
-                                utils.getVersion() +
+                                getVersion() +
                                 " @ " +
-                                utils.getRevision() +
+                                getRevision() +
                                 " */",
                         },
                     },
@@ -178,15 +162,6 @@ module.exports = ({
                 cwd: path.join(__dirname, "..", "src", "js"),
                 patterns: ["../src/js/**/*.js"],
             }),
-
-            // new webpack.SourceMapDevToolPlugin({
-            //     filename: "[name].map",
-            //     publicPath: "/v/" + utils.getRevision() + "/",
-            // }),
-            // new ReplaceCompressBlocks()
-            // new webpack.optimize.ModuleConcatenationPlugin()
-            // new WebpackDeepScopeAnalysisPlugin()
-            // new BundleAnalyzerPlugin()
         ],
         module: {
             rules: [
@@ -216,6 +191,13 @@ module.exports = ({
                                 end: "dev:end",
                             },
                         },
+                        {
+                            loader: "webpack-strip-block",
+                            options: {
+                                start: "wires:start",
+                                end: "wires:end",
+                            },
+                        },
                     ],
                 },
                 {
@@ -239,7 +221,6 @@ module.exports = ({
                                     pattern: /globalConfig\.beltSpeedItemsPerSecond/g,
                                     replacement: () => "2.0",
                                 },
-                                { pattern: /globalConfig\.itemSpacingOnBelts/g, replacement: () => "0.63" },
                                 { pattern: /globalConfig\.debug/g, replacement: () => "''" },
                             ],
                         }),

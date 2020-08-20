@@ -9,8 +9,18 @@
         "selectionOutline": "rgba(74, 163, 223, 0.5)",
         "selectionBackground": "rgba(74, 163, 223, 0.2)",
 
-        "directionLock": "rgb(74, 237, 134)",
-        "directionLockTrack": "rgba(74, 237, 134, 0.2)",
+        "directionLock": {
+            "regular": {
+                "color": "rgb(74, 237, 134)",
+                "background": "rgba(74, 237, 134, 0.2)"
+            },
+            "wires": {
+                "color": "rgb(209, 107, 203)",
+                "background": "rgba(209, 107, 203, 0.2)"
+            }
+        },
+
+        "colorBlindPickerTile": "rgba(50, 50, 50, 0.4)",
 
         "resources": {
             "shape": "#eaebec",
@@ -22,11 +32,18 @@
         "chunkOverview": {
             "empty": "#a6afbb",
             "filled": "#c5ccd6"
+        },
+
+        "wires": {
+            "overlayColor": "rgba(97, 161, 152, 0.75)",
+            "previewColor": "rgb(97, 161, 152, 0.4)",
+            "highlightColor": "rgba(72, 137, 255, 0.8)"
         }
     },
 
     "items": {
         "outline": "#55575a",
-        "outlineWidth": 0.75
+        "outlineWidth": 0.75,
+        "circleBackground": "rgba(40, 50, 65, 0.1)"
     }
 }

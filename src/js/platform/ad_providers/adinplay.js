@@ -5,7 +5,6 @@ import { Application } from "../../application";
 import { AdProviderInterface } from "../ad_provider";
 import { createLogger } from "../../core/logging";
 import { ClickDetector } from "../../core/click_detector";
-import { performanceNow } from "../../core/builtins";
 import { clamp } from "../../core/utils";
 import { T } from "../../translations";
 
@@ -52,7 +51,7 @@ export class AdinplayAdProvider extends AdProviderInterface {
         return (
             this.getHasAds() &&
             !this.videoAdResolveFunction &&
-            performanceNow() - this.lastVideoAdShowTime > minimumTimeBetweenVideoAdsMs
+            performance.now() - this.lastVideoAdShowTime > minimumTimeBetweenVideoAdsMs
         );
     }
 
@@ -103,7 +102,10 @@ export class AdinplayAdProvider extends AdProviderInterface {
 
         // Add the player
         const videoElement = this.adContainerMainElement.querySelector(".videoInner");
-        this.adContainerMainElement.querySelector(".adInner").style.maxWidth = w + "px";
+        /** @type {HTMLElement} */
+        const adInnerElement = this.adContainerMainElement.querySelector(".adInner");
+
+        adInnerElement.style.maxWidth = w + "px";
 
         const self = this;
         window.aiptag.cmd.player.push(function () {
@@ -141,7 +143,7 @@ export class AdinplayAdProvider extends AdProviderInterface {
     showVideoAd() {
         assert(this.getHasAds(), "Called showVideoAd but ads are not supported!");
         assert(!this.videoAdResolveFunction, "Video ad still running, can not show again!");
-        this.lastVideoAdShowTime = performanceNow();
+        this.lastVideoAdShowTime = performance.now();
         document.body.appendChild(this.adContainerMainElement);
         this.adContainerMainElement.classList.add("visible");
         this.adContainerMainElement.classList.remove("waitingForFinish");
@@ -167,7 +169,7 @@ export class AdinplayAdProvider extends AdProviderInterface {
                 this.videoAdResolveTimer = null;
 
                 // When the ad closed, also set the time
-                this.lastVideoAdShowTime = performanceNow();
+                this.lastVideoAdShowTime = performance.now();
                 resolve();
             };
 

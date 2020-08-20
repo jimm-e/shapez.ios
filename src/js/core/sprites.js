@@ -1,11 +1,10 @@
 import { DrawParameters } from "./draw_parameters";
-import { Math_floor } from "./builtins";
 import { Rectangle } from "./rectangle";
-import { epsilonCompare, round3Digits } from "./utils";
+import { round3Digits } from "./utils";
 
 const floorSpriteCoordinates = false;
 
-const ORIGINAL_SCALE = "1";
+export const ORIGINAL_SPRITE_SCALE = "0.75";
 
 export class BaseSprite {
     /**
@@ -64,10 +63,9 @@ export class SpriteAtlasLink {
 export class AtlasSprite extends BaseSprite {
     /**
      *
-     * @param {object} param0
-     * @param {string} param0.spriteName
+     * @param {string} spriteName
      */
-    constructor({ spriteName = "sprite" }) {
+    constructor(spriteName = "sprite") {
         super();
         /** @type {Object.<string, SpriteAtlasLink>} */
         this.linksByResolution = {};
@@ -75,7 +73,7 @@ export class AtlasSprite extends BaseSprite {
     }
 
     getRawTexture() {
-        return this.linksByResolution[ORIGINAL_SCALE].atlas;
+        return this.linksByResolution[ORIGINAL_SPRITE_SCALE].atlas;
     }
 
     /**
@@ -87,7 +85,16 @@ export class AtlasSprite extends BaseSprite {
             assert(context instanceof CanvasRenderingContext2D, "Not a valid context");
         }
 
-        const link = this.linksByResolution[ORIGINAL_SCALE];
+        const link = this.linksByResolution[ORIGINAL_SPRITE_SCALE];
+
+        assert(
+            link,
+            "Link not known: " +
+                ORIGINAL_SPRITE_SCALE +
+                " (having " +
+                Object.keys(this.linksByResolution) +
+                ")"
+        );
 
         const width = w || link.w;
         const height = h || link.h;
@@ -144,15 +151,20 @@ export class AtlasSprite extends BaseSprite {
      */
     drawCached(parameters, x, y, w = null, h = null, clipping = true) {
         if (G_IS_DEV) {
-            assertAlways(parameters instanceof DrawParameters, "Not a valid context");
-            assertAlways(!!w && w > 0, "Not a valid width:" + w);
-            assertAlways(!!h && h > 0, "Not a valid height:" + h);
+            assert(parameters instanceof DrawParameters, "Not a valid context");
+            assert(!!w && w > 0, "Not a valid width:" + w);
+            assert(!!h && h > 0, "Not a valid height:" + h);
         }
 
         const visibleRect = parameters.visibleRect;
 
         const scale = parameters.desiredAtlasScale;
         const link = this.linksByResolution[scale];
+
+        if (!link) {
+            assert(false, `Link not known: ${scale} (having ${Object.keys(this.linksByResolution)})`);
+        }
+
         const scaleW = w / link.w;
         const scaleH = h / link.h;
 
@@ -170,7 +182,7 @@ export class AtlasSprite extends BaseSprite {
 
         if (clipping) {
             const rect = new Rectangle(destX, destY, destW, destH);
-            intersection = rect.getUnion(visibleRect);
+            intersection = rect.getIntersection(visibleRect);
             if (!intersection) {
                 return;
             }
@@ -188,27 +200,25 @@ export class AtlasSprite extends BaseSprite {
             destH = intersection.h;
         }
 
-        // assert(epsilonCompare(scaleW, scaleH), "Sprite should be square for cached rendering");
-
         if (floorSpriteCoordinates) {
             parameters.context.drawImage(
                 link.atlas,
 
                 // atlas src pos
-                Math_floor(srcX),
-                Math_floor(srcY),
+                Math.floor(srcX),
+                Math.floor(srcY),
 
                 // atlas src size
-                Math_floor(srcW),
-                Math_floor(srcH),
+                Math.floor(srcW),
+                Math.floor(srcH),
 
                 // dest pos
-                Math_floor(destX),
-                Math_floor(destY),
+                Math.floor(destX),
+                Math.floor(destY),
 
                 // dest size
-                Math_floor(destW),
-                Math_floor(destH)
+                Math.floor(destW),
+                Math.floor(destH)
             );
         } else {
             parameters.context.drawImage(

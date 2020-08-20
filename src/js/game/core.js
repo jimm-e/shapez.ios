@@ -1,22 +1,22 @@
 /* typehints:start */
-import { InGameState } from "../states/ingame";
 import { Application } from "../application";
 /* typehints:end */
-
 import { BufferMaintainer } from "../core/buffer_maintainer";
 import { disableImageSmoothing, enableImageSmoothing, registerCanvas } from "../core/buffer_utils";
-import { Math_random } from "../core/builtins";
 import { globalConfig } from "../core/config";
 import { getDeviceDPI, resizeHighDPICanvas } from "../core/dpi_manager";
 import { DrawParameters } from "../core/draw_parameters";
 import { gMetaBuildingRegistry } from "../core/global_registries";
 import { createLogger } from "../core/logging";
+import { Rectangle } from "../core/rectangle";
+import { randomInt, round2Digits, round3Digits } from "../core/utils";
 import { Vector } from "../core/vector";
 import { Savegame } from "../savegame/savegame";
 import { SavegameSerializer } from "../savegame/savegame_serializer";
 import { AutomaticSave } from "./automatic_save";
 import { MetaHubBuilding } from "./buildings/hub";
 import { Camera } from "./camera";
+import { DynamicTickrate } from "./dynamic_tickrate";
 import { EntityManager } from "./entity_manager";
 import { GameSystemManager } from "./game_system_manager";
 import { HubGoals } from "./hub_goals";
@@ -24,14 +24,13 @@ import { GameHUD } from "./hud/hud";
 import { KeyActionMapper } from "./key_action_mapper";
 import { GameLogic } from "./logic";
 import { MapView } from "./map_view";
+import { defaultBuildingVariant } from "./meta_building";
+import { ProductionAnalytics } from "./production_analytics";
 import { GameRoot } from "./root";
 import { ShapeDefinitionManager } from "./shape_definition_manager";
 import { SoundProxy } from "./sound_proxy";
 import { GameTime } from "./time/game_time";
-import { ProductionAnalytics } from "./production_analytics";
-import { randomInt } from "../core/utils";
-import { defaultBuildingVariant } from "./meta_building";
-import { DynamicTickrate } from "./dynamic_tickrate";
+import { ORIGINAL_SPRITE_SCALE } from "../core/sprites";
 
 const logger = createLogger("ingame/core");
 
@@ -67,7 +66,7 @@ export class GameCore {
     /**
      * Initializes the root object which stores all game related data. The state
      * is required as a back reference (used sometimes)
-     * @param {InGameState} parentState
+     * @param {import("../states/ingame").InGameState} parentState
      * @param {Savegame} savegame
      */
     initializeRoot(parentState, savegame) {
@@ -131,7 +130,8 @@ export class GameCore {
         this.root.gameIsFresh = true;
         this.root.map.seed = randomInt(0, 100000);
 
-        gMetaBuildingRegistry.findByClass(MetaHubBuilding).createAndPlaceEntity({
+        // Place the hub
+        const hub = gMetaBuildingRegistry.findByClass(MetaHubBuilding).createEntity({
             root: this.root,
             origin: new Vector(-2, -2),
             rotation: 0,
@@ -139,6 +139,8 @@ export class GameCore {
             rotationVariant: 0,
             variant: defaultBuildingVariant,
         });
+        this.root.map.placeStaticEntity(hub);
+        this.root.entityMgr.registerEntity(hub);
     }
 
     /**
@@ -230,10 +232,6 @@ export class GameCore {
     tick(deltaMs) {
         const root = this.root;
 
-        if (root.hud.parts.processingOverlay.hasTasks() || root.hud.parts.processingOverlay.isRunning()) {
-            return true;
-        }
-
         // Extract current real time
         root.time.updateRealtimeNow();
 
@@ -323,14 +321,6 @@ export class GameCore {
         const root = this.root;
         const systems = root.systemMgr.systems;
 
-        const taskRunner = root.hud.parts.processingOverlay;
-        if (taskRunner.hasTasks()) {
-            if (!taskRunner.isRunning()) {
-                taskRunner.process();
-            }
-            return;
-        }
-
         this.root.dynamicTickrate.onFrameRendered();
 
         if (!this.shouldRender()) {
@@ -339,32 +329,29 @@ export class GameCore {
             return;
         }
 
-        // Update buffers as the very first
-        root.buffers.update();
+        this.root.signals.gameFrameStarted.dispatch();
 
         root.queue.requireRedraw = false;
 
         // Gather context and save all state
         const context = root.context;
         context.save();
-        if (G_IS_DEV && globalConfig.debug.testClipping) {
-            context.clearRect(0, 0, window.innerWidth * 3, window.innerHeight * 3);
+        if (G_IS_DEV) {
+            context.fillStyle = "#a10000";
+            context.fillRect(0, 0, window.innerWidth * 3, window.innerHeight * 3);
         }
 
         // Compute optimal zoom level and atlas scale
         const zoomLevel = root.camera.zoomLevel;
+        const lowQuality = root.app.settings.getAllSettings().lowQualityTextures;
         const effectiveZoomLevel =
             (zoomLevel / globalConfig.assetsDpi) * getDeviceDPI() * globalConfig.assetsSharpness;
 
-        let desiredAtlasScale = "0.1";
-        if (effectiveZoomLevel > 0.75) {
-            desiredAtlasScale = "1";
-        } else if (effectiveZoomLevel > 0.5) {
-            desiredAtlasScale = "0.75";
-        } else if (effectiveZoomLevel > 0.25) {
+        let desiredAtlasScale = "0.25";
+        if (effectiveZoomLevel > 0.8 && !lowQuality) {
+            desiredAtlasScale = ORIGINAL_SPRITE_SCALE;
+        } else if (effectiveZoomLevel > 0.4 && !lowQuality) {
             desiredAtlasScale = "0.5";
-        } else if (effectiveZoomLevel > 0.1) {
-            desiredAtlasScale = "0.25";
         }
 
         // Construct parameters required for drawing
@@ -376,11 +363,18 @@ export class GameCore {
             root: root,
         });
 
-        if (G_IS_DEV && (globalConfig.debug.testCulling || globalConfig.debug.hideFog)) {
+        if (G_IS_DEV && globalConfig.debug.testCulling) {
             context.clearRect(0, 0, root.gameWidth, root.gameHeight);
         }
 
         // Transform to world space
+
+        if (G_IS_DEV && globalConfig.debug.testClipping) {
+            params.visibleRect = params.visibleRect.expandedInAllDirections(
+                -200 / this.root.camera.zoomLevel
+            );
+        }
+
         root.camera.transform(context);
 
         assert(context.globalAlpha === 1.0, "Global alpha not 1 on frame start");
@@ -391,23 +385,37 @@ export class GameCore {
         // Main rendering order
         // -----
 
-        root.map.drawBackground(params);
+        if (this.root.camera.getIsMapOverlayActive()) {
+            // Map overview
+            root.map.drawOverlay(params);
+        } else {
+            // Background (grid, resources, etc)
+            root.map.drawBackground(params);
 
-        if (!this.root.camera.getIsMapOverlayActive()) {
-            systems.itemAcceptor.drawUnderlays(params);
-            systems.belt.draw(params);
-            systems.itemEjector.draw(params);
-            systems.itemAcceptor.draw(params);
-        }
+            // Belt items
+            systems.belt.drawBeltItems(params);
 
-        root.map.drawForeground(params);
-        if (!this.root.camera.getIsMapOverlayActive()) {
+            // Miner & Static map entities etc.
+            root.map.drawForeground(params);
+
+            // HUB Overlay
             systems.hub.draw(params);
-            systems.storage.draw(params);
+
+            // Green wires overlay
+            root.hud.parts.wiresOverlay.draw(params);
+
+            if (this.root.currentLayer === "wires") {
+                // Static map entities
+                root.map.drawWiresForegroundLayer(params);
+            }
         }
 
         if (G_IS_DEV) {
             root.map.drawStaticEntityDebugOverlays(params);
+        }
+
+        if (G_IS_DEV && globalConfig.debug.renderBeltPaths) {
+            systems.belt.drawBeltPathDebug(params);
         }
 
         // END OF GAME CONTENT
@@ -421,6 +429,14 @@ export class GameCore {
         // Restore to screen space
         context.restore();
 
+        // Restore parameters
+        params.zoomLevel = 1;
+        params.desiredAtlasScale = ORIGINAL_SPRITE_SCALE;
+        params.visibleRect = new Rectangle(0, 0, this.root.gameWidth, this.root.gameHeight);
+        if (G_IS_DEV && globalConfig.debug.testClipping) {
+            params.visibleRect = params.visibleRect.expandedInAllDirections(-200);
+        }
+
         // Draw overlays, those are screen space
         root.hud.drawOverlays(params);
 
@@ -431,9 +447,46 @@ export class GameCore {
             for (let i = 0; i < 1e8; ++i) {
                 sum += i;
             }
-            if (Math_random() > 0.95) {
+            if (Math.random() > 0.95) {
                 console.log(sum);
             }
+        }
+
+        if (G_IS_DEV && globalConfig.debug.showAtlasInfo) {
+            context.font = "13px GameFont";
+            context.fillStyle = "blue";
+            context.fillText(
+                "Atlas: " +
+                    desiredAtlasScale +
+                    " / Zoom: " +
+                    round2Digits(zoomLevel) +
+                    " / Effective Zoom: " +
+                    round2Digits(effectiveZoomLevel),
+                20,
+                600
+            );
+
+            const stats = this.root.buffers.getStats();
+            context.fillText(
+                "Buffers: " +
+                    stats.rootKeys +
+                    " root keys, " +
+                    stats.subKeys +
+                    " sub keys / buffers / VRAM: " +
+                    round2Digits(stats.vramBytes / (1024 * 1024)) +
+                    " MB",
+
+                20,
+                620
+            );
+        }
+
+        if (G_IS_DEV && globalConfig.debug.testClipping) {
+            context.strokeStyle = "red";
+            context.lineWidth = 1;
+            context.beginPath();
+            context.rect(200, 200, this.root.gameWidth - 400, this.root.gameHeight - 400);
+            context.stroke();
         }
     }
 }

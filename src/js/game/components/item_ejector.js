@@ -1,15 +1,20 @@
-import { Vector, enumDirection, enumDirectionToVector } from "../../core/vector";
-import { BaseItem } from "../base_item";
-import { Component } from "../component";
+import { enumDirection, enumDirectionToVector, Vector } from "../../core/vector";
 import { types } from "../../savegame/serialization";
-import { gItemRegistry } from "../../core/global_registries";
+import { BaseItem } from "../base_item";
+import { BeltPath } from "../belt_path";
+import { Component } from "../component";
+import { Entity } from "../entity";
+import { typeItemSingleton } from "../item_resolver";
 
 /**
  * @typedef {{
  *    pos: Vector,
  *    direction: enumDirection,
  *    item: BaseItem,
- *    progress: number?
+ *    progress: number?,
+ *    cachedDestSlot?: import("./item_acceptor").ItemAcceptorLocatedSlot,
+ *    cachedBeltPath?: BeltPath,
+ *    cachedTargetEntity?: Entity
  * }} ItemEjectorSlot
  */
 
@@ -19,13 +24,11 @@ export class ItemEjectorComponent extends Component {
     }
 
     static getSchema() {
+        // The cachedDestSlot, cachedTargetEntity fields are not serialized.
         return {
-            instantEject: types.bool,
             slots: types.array(
                 types.structured({
-                    pos: types.vector,
-                    direction: types.enum(enumDirection),
-                    item: types.nullable(types.obj(gItemRegistry)),
+                    item: types.nullable(typeItemSingleton),
                     progress: types.float,
                 })
             ),
@@ -44,27 +47,27 @@ export class ItemEjectorComponent extends Component {
 
         return new ItemEjectorComponent({
             slots: slotsCopy,
-            instantEject: this.instantEject,
         });
     }
 
     /**
      *
      * @param {object} param0
-     * @param {Array<{pos: Vector, direction: enumDirection}>=} param0.slots The slots to eject on
-     * @param {boolean=} param0.instantEject If the ejection is instant
+     * @param {Array<{pos: Vector, direction: enumDirection }>=} param0.slots The slots to eject on
      */
-    constructor({ slots = [], instantEject = false }) {
+    constructor({ slots = [] }) {
         super();
 
-        // How long items take to eject
-        this.instantEject = instantEject;
-
         this.setSlots(slots);
+
+        /**
+         * Whether this ejector slot is enabled
+         */
+        this.enabled = true;
     }
 
     /**
-     * @param {Array<{pos: Vector, direction: enumDirection}>} slots The slots to eject on
+     * @param {Array<{pos: Vector, direction: enumDirection }>} slots The slots to eject on
      */
     setSlots(slots) {
         /** @type {Array<ItemEjectorSlot>} */
@@ -76,24 +79,18 @@ export class ItemEjectorComponent extends Component {
                 direction: slot.direction,
                 item: null,
                 progress: 0,
+                cachedDestSlot: null,
+                cachedTargetEntity: null,
             });
         }
     }
 
     /**
-     * Returns the amount of slots
-     */
-    getNumSlots() {
-        return this.slots.length;
-    }
-
-    /**
      * Returns where this slot ejects to
-     * @param {number} index
+     * @param {ItemEjectorSlot} slot
      * @returns {Vector}
      */
-    getSlotTargetLocalTile(index) {
-        const slot = this.slots[index];
+    getSlotTargetLocalTile(slot) {
         const directionVector = enumDirectionToVector[slot.direction];
         return slot.pos.add(directionVector);
     }
@@ -104,21 +101,11 @@ export class ItemEjectorComponent extends Component {
      */
     anySlotEjectsToLocalTile(tile) {
         for (let i = 0; i < this.slots.length; ++i) {
-            if (this.getSlotTargetLocalTile(i).equals(tile)) {
+            if (this.getSlotTargetLocalTile(this.slots[i]).equals(tile)) {
                 return true;
             }
         }
         return false;
-    }
-
-    /**
-     * Returns if slot # is currently ejecting
-     * @param {number} slotIndex
-     * @returns {boolean}
-     */
-    isSlotEjecting(slotIndex) {
-        assert(slotIndex >= 0 && slotIndex < this.slots.length, "Invalid ejector slot: " + slotIndex);
-        return !!this.slots[slotIndex].item;
     }
 
     /**
@@ -145,32 +132,6 @@ export class ItemEjectorComponent extends Component {
     }
 
     /**
-     * Returns if any slot is ejecting
-     * @returns {boolean}
-     */
-    isAnySlotEjecting() {
-        for (let i = 0; i < this.slots.length; ++i) {
-            if (this.slots[i].item) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Returns if any slot is free
-     * @returns {boolean}
-     */
-    hasAnySlotFree() {
-        for (let i = 0; i < this.slots.length; ++i) {
-            if (this.canEjectOnSlot(i)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Tries to eject a given item
      * @param {number} slotIndex
      * @param {BaseItem} item
@@ -181,7 +142,20 @@ export class ItemEjectorComponent extends Component {
             return false;
         }
         this.slots[slotIndex].item = item;
-        this.slots[slotIndex].progress = this.instantEject ? 1 : 0;
+        this.slots[slotIndex].progress = 0;
         return true;
+    }
+
+    /**
+     * Clears the given slot and returns the item it had
+     * @param {number} slotIndex
+     * @returns {BaseItem|null}
+     */
+    takeSlotItem(slotIndex) {
+        const slot = this.slots[slotIndex];
+        const item = slot.item;
+        slot.item = null;
+        slot.progress = 0.0;
+        return item;
     }
 }

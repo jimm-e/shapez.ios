@@ -7,8 +7,6 @@ import { Application } from "../application";
 import { Signal, STOP_PROPAGATION } from "../core/signal";
 import { IS_MOBILE } from "../core/config";
 import { T } from "../translations";
-import { JSON_stringify } from "../core/builtins";
-
 function key(str) {
     return str.toUpperCase().charCodeAt(0);
 }
@@ -22,10 +20,13 @@ export const KEYMAPPINGS = {
     ingame: {
         menuOpenShop: { keyCode: key("F") },
         menuOpenStats: { keyCode: key("G") },
+        menuClose: { keyCode: key("Q") },
 
         toggleHud: { keyCode: 113 }, // F2
         exportScreenshot: { keyCode: 114 }, // F3PS
         toggleFPSInfo: { keyCode: 115 }, // F4
+
+        switchLayers: { keyCode: key("Y") },
     },
 
     navigation: {
@@ -53,6 +54,16 @@ export const KEYMAPPINGS = {
         mixer: { keyCode: key("8") },
         painter: { keyCode: key("9") },
         trash: { keyCode: key("0") },
+
+        lever: { keyCode: key("L") },
+        filter: { keyCode: key("B") },
+        display: { keyCode: key("N") },
+
+        wire: { keyCode: key("1") },
+        wire_tunnel: { keyCode: key("2") },
+        constant_signal: { keyCode: key("3") },
+        logic_gate: { keyCode: key("4") },
+        virtual_processor: { keyCode: key("5") },
     },
 
     placement: {
@@ -238,7 +249,6 @@ export function getStringForKeyCode(code) {
             return "'";
     }
 
-    // TODO
     return String.fromCharCode(code);
 }
 
@@ -440,7 +450,7 @@ export class KeyActionMapper {
     getBinding(binding) {
         // @ts-ignore
         const id = binding.id;
-        assert(id, "Not a valid keybinding: " + JSON_stringify(binding));
+        assert(id, "Not a valid keybinding: " + JSON.stringify(binding));
         assert(this.keybindings[id], "Keybinding " + id + " not known!");
         return this.keybindings[id];
     }

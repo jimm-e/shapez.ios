@@ -1,21 +1,41 @@
 import { GameState } from "../core/game_state";
 import { cachebust } from "../core/cachebust";
-import { globalConfig, IS_DEBUG, IS_DEMO, THIRDPARTY_URLS } from "../core/config";
+import { globalConfig, IS_DEMO, THIRDPARTY_URLS } from "../core/config";
 import {
     makeDiv,
     makeButtonElement,
     formatSecondsToTimeAgo,
-    generateFileDownload,
     waitNextFrame,
     isSupportedBrowser,
     makeButton,
+    removeAllChildren,
 } from "../core/utils";
 import { ReadWriteProxy } from "../core/read_write_proxy";
 import { HUDModalDialogs } from "../game/hud/parts/modal_dialogs";
 import { T } from "../translations";
-import { PlatformWrapperImplBrowser } from "../platform/browser/wrapper";
 import { getApplicationSettingById } from "../profile/application_settings";
-import { EnumSetting } from "../profile/setting_types";
+
+/**
+ * @typedef {import("../savegame/savegame_typedefs").SavegameMetadata} SavegameMetadata
+ * @typedef {import("../profile/setting_types").EnumSetting} EnumSetting
+ */
+
+/**
+ * Generates a file download
+ * @param {string} filename
+ * @param {string} text
+ */
+function generateFileDownload(filename, text) {
+    var element = document.createElement("a");
+    element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(text));
+    element.setAttribute("download", filename);
+
+    element.style.display = "none";
+    document.body.appendChild(element);
+
+    element.click();
+    document.body.removeChild(element);
+}
 
 export class MainMenuState extends GameState {
     constructor() {
@@ -46,17 +66,14 @@ export class MainMenuState extends GameState {
             }
             </div>
 
-            ${
-                G_IS_STANDALONE
-                    ? ""
-                    : `<video autoplay muted loop class="fullscreenBackgroundVideo">
+            <video autoplay muted loop class="fullscreenBackgroundVideo">
                 <source src="${cachebust("res/bg_render.webm")}" type="video/webm">
-            </video>`
-            }
+            </video>
 
 
             <div class="logo">
                 <img src="${cachebust("res/logo.png")}" alt="shapez.io Logo">
+                <span class="updateLabel">Wires update!</span>
             </div>
 
 
@@ -72,6 +89,7 @@ export class MainMenuState extends GameState {
                             ? ""
                             : `<div class="browserWarning">${T.mainMenu.browserWarning}</div>`
                     }
+                    <div class="buttons"></div>
                 </div>
 
 
@@ -89,9 +107,13 @@ export class MainMenuState extends GameState {
                     <span class="thirdpartyLogo  discordLogo"></span>
                 </a>
 
-                <a class="changelog">${T.changelog.title}</a>
+                <div class="sidelinks">
+                    <a class="redditLink">${T.mainMenu.subreddit}</a>
 
-                <a class="helpTranslate">${T.mainMenu.helpTranslate}</a>
+                    <a class="changelog">${T.changelog.title}</a>
+
+                    <a class="helpTranslate">${T.mainMenu.helpTranslate}</a>
+                </div>
 
                 <div class="author">${T.mainMenu.madeBy.replace(
                     "<author-link>",
@@ -125,7 +147,6 @@ export class MainMenuState extends GameState {
                     const closeLoader = this.dialogs.showLoadingDialog();
                     const reader = new FileReader();
                     reader.addEventListener("load", event => {
-                        // @ts-ignore
                         const contents = event.target.result;
                         let realContent;
 
@@ -148,6 +169,7 @@ export class MainMenuState extends GameState {
                                     T.dialogs.importSavegameSuccess.text
                                 );
 
+                                this.renderMainMenu();
                                 this.renderSavegames();
                             },
                             err => {
@@ -201,24 +223,18 @@ export class MainMenuState extends GameState {
 
         // Initialize video
         this.videoElement = this.htmlElement.querySelector("video");
-        if (this.videoElement) {
-            this.videoElement.playbackRate = 0.9;
-            this.videoElement.addEventListener("canplay", () => {
-                if (this.videoElement) {
-                    this.videoElement.classList.add("loaded");
-                }
-            });
-        }
+        this.videoElement.playbackRate = 0.9;
+        this.videoElement.addEventListener("canplay", () => {
+            if (this.videoElement) {
+                this.videoElement.classList.add("loaded");
+            }
+        });
 
         this.trackClicks(qs(".settingsButton"), this.onSettingsButtonClicked);
         this.trackClicks(qs(".changelog"), this.onChangelogClicked);
+        this.trackClicks(qs(".redditLink"), this.onRedditClicked);
         this.trackClicks(qs(".languageChoose"), this.onLanguageChooseClicked);
         this.trackClicks(qs(".helpTranslate"), this.onTranslationHelpLinkClicked);
-
-        const contestButton = qs(".participateContest");
-        if (contestButton) {
-            this.trackClicks(contestButton, this.onContestClicked);
-        }
 
         if (G_IS_STANDALONE) {
             this.trackClicks(qs(".exitAppButton"), this.onExitAppButtonClicked);
@@ -255,6 +271,10 @@ export class MainMenuState extends GameState {
     }
 
     renderMainMenu() {
+        const buttonContainer = this.htmlElement.querySelector(".mainContainer .buttons");
+        removeAllChildren(buttonContainer);
+
+        // Import button
         const importButtonElement = makeButtonElement(
             ["importButton", "styledButton"],
             T.mainMenu.importSavegame
@@ -262,14 +282,15 @@ export class MainMenuState extends GameState {
         this.trackClicks(importButtonElement, this.requestImportSavegame);
 
         if (this.savedGames.length > 0) {
+            // Continue game
             const continueButton = makeButton(
-                this.htmlElement.querySelector(".mainContainer"),
+                buttonContainer,
                 ["continueButton", "styledButton"],
                 T.mainMenu.continue
             );
             this.trackClicks(continueButton, this.onContinueButtonClicked);
 
-            const outerDiv = makeDiv(this.htmlElement.querySelector(".mainContainer"), null, ["outer"], null);
+            const outerDiv = makeDiv(buttonContainer, null, ["outer"], null);
             outerDiv.appendChild(importButtonElement);
             const newGameButton = makeButton(
                 this.htmlElement.querySelector(".mainContainer .outer"),
@@ -277,24 +298,11 @@ export class MainMenuState extends GameState {
                 T.mainMenu.newGame
             );
             this.trackClicks(newGameButton, this.onPlayButtonClicked);
-
-            const oldPlayButton = this.htmlElement.querySelector(".mainContainer .playButton");
-            if (oldPlayButton) oldPlayButton.remove();
         } else {
-            const playBtn = makeButton(
-                this.htmlElement.querySelector(".mainContainer"),
-                ["playButton", "styledButton"],
-                T.mainMenu.play
-            );
+            // New game
+            const playBtn = makeButton(buttonContainer, ["playButton", "styledButton"], T.mainMenu.play);
             this.trackClicks(playBtn, this.onPlayButtonClicked);
-
-            this.htmlElement.querySelector(".mainContainer").appendChild(importButtonElement);
-
-            const outerDiv = this.htmlElement.querySelector(".mainContainer .outer");
-            if (outerDiv) {
-                outerDiv.remove();
-                this.htmlElement.querySelector(".mainContainer .continueButton").remove();
-            }
+            buttonContainer.appendChild(importButtonElement);
         }
     }
 
@@ -312,13 +320,9 @@ export class MainMenuState extends GameState {
         this.moveToState("ChangelogState");
     }
 
-    onContestClicked() {
-        this.app.analytics.trackUiClick("contest_click");
-
-        this.dialogs.showInfo(
-            T.mainMenu.contests.contest_01_03062020.title,
-            T.mainMenu.contests.contest_01_03062020.longDesc
-        );
+    onRedditClicked() {
+        this.app.analytics.trackUiClick("main_menu_reddit_link");
+        this.app.platformWrapper.openExternalLink(THIRDPARTY_URLS.reddit);
     }
 
     onLanguageChooseClicked() {
@@ -408,7 +412,7 @@ export class MainMenuState extends GameState {
     }
 
     /**
-     * @param {object} game
+     * @param {SavegameMetadata} game
      */
     resumeGame(game) {
         this.app.analytics.trackUiClick("resume_game");
@@ -433,7 +437,7 @@ export class MainMenuState extends GameState {
     }
 
     /**
-     * @param {object} game
+     * @param {SavegameMetadata} game
      */
     deleteGame(game) {
         this.app.analytics.trackUiClick("delete_game");
@@ -461,7 +465,7 @@ export class MainMenuState extends GameState {
     }
 
     /**
-     * @param {object} game
+     * @param {SavegameMetadata} game
      */
     downloadGame(game) {
         this.app.analytics.trackUiClick("download_game");

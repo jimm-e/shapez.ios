@@ -2,9 +2,8 @@
 
 const path = require("path");
 const webpack = require("webpack");
-const utils = require("./buildutils");
+const { getRevision, getVersion, getAllResourceImages } = require("./buildutils");
 const lzString = require("lz-string");
-// const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const CircularDependencyPlugin = require("circular-dependency-plugin");
 
 module.exports = ({ watch = false, standalone = false }) => {
@@ -36,15 +35,14 @@ module.exports = ({ watch = false, standalone = false }) => {
                     lzString.compressToEncodedURIComponent("http://localhost:10005/v1")
                 ),
                 G_IS_DEV: "true",
-                G_IS_PROD: "false",
                 G_IS_RELEASE: "false",
                 G_IS_MOBILE_APP: "false",
                 G_IS_BROWSER: "true",
                 G_IS_STANDALONE: standalone ? "true" : "false",
                 G_BUILD_TIME: "" + new Date().getTime(),
-                G_BUILD_COMMIT_HASH: JSON.stringify(utils.getRevision()),
-                G_BUILD_VERSION: JSON.stringify(utils.getVersion()),
-                G_ALL_UI_IMAGES: JSON.stringify(utils.getAllResourceImages()),
+                G_BUILD_COMMIT_HASH: JSON.stringify(getRevision()),
+                G_BUILD_VERSION: JSON.stringify(getVersion()),
+                G_ALL_UI_IMAGES: JSON.stringify(getAllResourceImages()),
             }),
 
             new CircularDependencyPlugin({
@@ -61,7 +59,6 @@ module.exports = ({ watch = false, standalone = false }) => {
                 // set the current working directory for displaying module paths
                 cwd: path.join(__dirname, "..", "src", "js"),
             }),
-            // new BundleAnalyzerPlugin()
         ],
         module: {
             rules: [

@@ -1,6 +1,4 @@
-import { Math_random } from "../core/builtins";
 import { globalConfig } from "../core/config";
-import { queryParamOptions } from "../core/query_parameters";
 import { clamp, findNiceIntegerValue, randomChoice, randomInt } from "../core/utils";
 import { BasicSerializableObject, types } from "../savegame/serialization";
 import { enumColors } from "./colors";
@@ -8,7 +6,7 @@ import { enumItemProcessorTypes } from "./components/item_processor";
 import { GameRoot } from "./root";
 import { enumSubShape, ShapeDefinition } from "./shape_definition";
 import { enumHubGoalRewards, tutorialGoals } from "./tutorial_goals";
-import { UPGRADES, blueprintShape } from "./upgrades";
+import { UPGRADES } from "./upgrades";
 
 export class HubGoals extends BasicSerializableObject {
     static getId() {
@@ -53,6 +51,17 @@ export class HubGoals extends BasicSerializableObject {
             }
             this.upgradeImprovements[upgradeId] = totalImprovement;
         }
+
+        // Compute current goal
+        const goal = tutorialGoals[this.level - 1];
+        if (goal) {
+            this.currentGoal = {
+                /** @type {ShapeDefinition} */
+                definition: this.root.shapeDefinitionMgr.getShapeFromShortKey(goal.shape),
+                required: goal.required,
+                reward: goal.reward,
+            };
+        }
     }
 
     /**
@@ -96,13 +105,14 @@ export class HubGoals extends BasicSerializableObject {
 
         // Allow quickly switching goals in dev mode
         if (G_IS_DEV) {
-            if (G_IS_DEV) {
-                window.addEventListener("keydown", ev => {
-                    if (ev.key === "b") {
+            window.addEventListener("keydown", ev => {
+                if (ev.key === "b") {
+                    // root is not guaranteed to exist within ~0.5s after loading in
+                    if (this.root && this.root.app && this.root.app.gameAnalytics) {
                         this.onGoalCompleted();
                     }
-                });
-            }
+                }
+            });
         }
     }
 
@@ -202,7 +212,7 @@ export class HubGoals extends BasicSerializableObject {
         this.currentGoal = {
             /** @type {ShapeDefinition} */
             definition: this.createRandomShape(),
-            required: 1000 + findNiceIntegerValue(this.level * 47.5),
+            required: 10000 + findNiceIntegerValue(this.level * 2000),
             reward: enumHubGoalRewards.no_reward_freeplay,
         };
     }
@@ -275,7 +285,7 @@ export class HubGoals extends BasicSerializableObject {
      * @param {string} upgradeId
      * @returns {boolean}
      */
-    tryUnlockUgprade(upgradeId) {
+    tryUnlockUpgrade(upgradeId) {
         if (!this.canUnlockUpgrade(upgradeId)) {
             return false;
         }
@@ -313,13 +323,11 @@ export class HubGoals extends BasicSerializableObject {
      * @returns {ShapeDefinition}
      */
     createRandomShape() {
-        const layerCount = clamp(this.level / 50, 2, 4);
+        const layerCount = clamp(this.level / 25, 2, 4);
         /** @type {Array<import("./shape_definition").ShapeLayer>} */
         let layers = [];
 
-        // @ts-ignore
         const randomColor = () => randomChoice(Object.values(enumColors));
-        // @ts-ignore
         const randomShape = () => randomChoice(Object.values(enumSubShape));
 
         let anyIsMissingTwo = false;
@@ -336,14 +344,14 @@ export class HubGoals extends BasicSerializableObject {
             }
 
             // Sometimes shapes are missing
-            if (Math_random() > 0.85) {
+            if (Math.random() > 0.85) {
                 layer[randomInt(0, 3)] = null;
             }
 
             // Sometimes they actually are missing *two* ones!
             // Make sure at max only one layer is missing it though, otherwise we could
             // create an uncreateable shape
-            if (Math_random() > 0.95 && !anyIsMissingTwo) {
+            if (Math.random() > 0.95 && !anyIsMissingTwo) {
                 layer[randomInt(0, 3)] = null;
                 anyIsMissingTwo = true;
             }
@@ -388,11 +396,16 @@ export class HubGoals extends BasicSerializableObject {
      */
     getProcessorBaseSpeed(processorType) {
         switch (processorType) {
+            case enumItemProcessorTypes.splitterWires:
+                return globalConfig.wiresSpeedItemsPerSecond * 2;
+
             case enumItemProcessorTypes.trash:
             case enumItemProcessorTypes.hub:
                 return 1e30;
             case enumItemProcessorTypes.splitter:
                 return globalConfig.beltSpeedItemsPerSecond * this.upgradeImprovements.belt * 2;
+            case enumItemProcessorTypes.filter:
+                return globalConfig.beltSpeedItemsPerSecond * this.upgradeImprovements.belt;
 
             case enumItemProcessorTypes.mixer:
             case enumItemProcessorTypes.painter:
@@ -413,6 +426,7 @@ export class HubGoals extends BasicSerializableObject {
             case enumItemProcessorTypes.cutterQuad:
             case enumItemProcessorTypes.rotater:
             case enumItemProcessorTypes.rotaterCCW:
+            case enumItemProcessorTypes.rotaterFL:
             case enumItemProcessorTypes.stacker: {
                 assert(
                     globalConfig.buildingSpeeds[processorType],

@@ -1,17 +1,5 @@
 import { globalConfig } from "./config";
-import {
-    Math_abs,
-    Math_floor,
-    Math_PI,
-    Math_max,
-    Math_min,
-    Math_round,
-    Math_hypot,
-    Math_atan2,
-    Math_sin,
-    Math_cos,
-    Math_ceil,
-} from "./builtins";
+import { safeModulo } from "./utils";
 
 const tileSize = globalConfig.tileSize;
 const halfTileSize = globalConfig.halfTileSize;
@@ -55,6 +43,14 @@ export const enumAngleToDirection = {
     180: enumDirection.bottom,
     270: enumDirection.left,
 };
+
+/** @type {Array<enumDirection>} */
+export const arrayAllDirections = [
+    enumDirection.top,
+    enumDirection.right,
+    enumDirection.bottom,
+    enumDirection.left,
+];
 
 export class Vector {
     /**
@@ -158,7 +154,7 @@ export class Vector {
      * @returns {number}
      */
     length() {
-        return Math_hypot(this.x, this.y);
+        return Math.hypot(this.x, this.y);
     }
 
     /**
@@ -226,7 +222,7 @@ export class Vector {
      * @returns {Vector}
      */
     maxScalar(f) {
-        return new Vector(Math_max(f, this.x), Math_max(f, this.y));
+        return new Vector(Math.max(f, this.x), Math.max(f, this.y));
     }
 
     /**
@@ -244,7 +240,7 @@ export class Vector {
      * @returns {Vector}
      */
     min(v) {
-        return new Vector(Math_min(v.x, this.x), Math_min(v.y, this.y));
+        return new Vector(Math.min(v.x, this.x), Math.min(v.y, this.y));
     }
 
     /**
@@ -253,14 +249,14 @@ export class Vector {
      * @returns {Vector}
      */
     max(v) {
-        return new Vector(Math_max(v.x, this.x), Math_max(v.y, this.y));
+        return new Vector(Math.max(v.x, this.x), Math.max(v.y, this.y));
     }
     /**
      * Computes the component wise absolute
      * @returns {Vector}
      */
     abs() {
-        return new Vector(Math_abs(this.x), Math_abs(this.y));
+        return new Vector(Math.abs(this.x), Math.abs(this.y));
     }
 
     /**
@@ -278,7 +274,7 @@ export class Vector {
      * @returns {number}
      */
     distance(v) {
-        return Math_hypot(this.x - v.x, this.y - v.y);
+        return Math.hypot(this.x - v.x, this.y - v.y);
     }
 
     /**
@@ -290,6 +286,15 @@ export class Vector {
         const dx = this.x - v.x;
         const dy = this.y - v.y;
         return dx * dx + dy * dy;
+    }
+
+    /**
+     * Returns x % f, y % f
+     * @param {number} f
+     * @returns {Vector} new vector
+     */
+    modScalar(f) {
+        return new Vector(safeModulo(this.x, f), safeModulo(this.y, f));
     }
 
     /**
@@ -308,7 +313,7 @@ export class Vector {
      * @returns {Vector}
      */
     floor() {
-        return new Vector(Math_floor(this.x), Math_floor(this.y));
+        return new Vector(Math.floor(this.x), Math.floor(this.y));
     }
 
     /**
@@ -316,7 +321,7 @@ export class Vector {
      * @returns {Vector}
      */
     ceil() {
-        return new Vector(Math_ceil(this.x), Math_ceil(this.y));
+        return new Vector(Math.ceil(this.x), Math.ceil(this.y));
     }
 
     /**
@@ -324,7 +329,7 @@ export class Vector {
      * @returns {Vector}
      */
     round() {
-        return new Vector(Math_round(this.x), Math_round(this.y));
+        return new Vector(Math.round(this.x), Math.round(this.y));
     }
 
     /**
@@ -332,7 +337,7 @@ export class Vector {
      * @returns {Vector}
      */
     toTileSpace() {
-        return new Vector(Math_floor(this.x / tileSize), Math_floor(this.y / tileSize));
+        return new Vector(Math.floor(this.x / tileSize), Math.floor(this.y / tileSize));
     }
 
     /**
@@ -340,7 +345,7 @@ export class Vector {
      * @returns {Vector}
      */
     toStreetSpace() {
-        return new Vector(Math_floor(this.x / halfTileSize + 0.25), Math_floor(this.y / halfTileSize + 0.25));
+        return new Vector(Math.floor(this.x / halfTileSize + 0.25), Math.floor(this.y / halfTileSize + 0.25));
     }
 
     /**
@@ -364,7 +369,7 @@ export class Vector {
      * @returns {Vector}
      */
     snapWorldToTile() {
-        return new Vector(Math_floor(this.x / tileSize) * tileSize, Math_floor(this.y / tileSize) * tileSize);
+        return new Vector(Math.floor(this.x / tileSize) * tileSize, Math.floor(this.y / tileSize) * tileSize);
     }
 
     /**
@@ -372,7 +377,7 @@ export class Vector {
      * @returns {Vector}
      */
     normalize() {
-        const len = Math_max(1e-5, Math_hypot(this.x, this.y));
+        const len = Math.max(1e-5, Math.hypot(this.x, this.y));
         return new Vector(this.x / len, this.y / len);
     }
 
@@ -381,7 +386,7 @@ export class Vector {
      * @returns {Vector}
      */
     normalizeIfGreaterOne() {
-        const len = Math_max(1, Math_hypot(this.x, this.y));
+        const len = Math.max(1, Math.hypot(this.x, this.y));
         return new Vector(this.x / len, this.y / len);
     }
 
@@ -393,7 +398,7 @@ export class Vector {
     normalizedDirection(v) {
         const dx = v.x - this.x;
         const dy = v.y - this.y;
-        const len = Math_max(1e-5, Math_hypot(dx, dy));
+        const len = Math.max(1e-5, Math.hypot(dx, dy));
         return new Vector(dx / len, dy / len);
     }
 
@@ -437,8 +442,8 @@ export class Vector {
      * @returns {Vector} new vector
      */
     rotated(angle) {
-        const sin = Math_sin(angle);
-        const cos = Math_cos(angle);
+        const sin = Math.sin(angle);
+        const cos = Math.cos(angle);
         return new Vector(this.x * cos - this.y * sin, this.x * sin + this.y * cos);
     }
 
@@ -448,8 +453,8 @@ export class Vector {
      * @returns {Vector} this vector
      */
     rotateInplaceFastMultipleOf90(angle) {
-        // const sin = Math_sin(angle);
-        // const cos = Math_cos(angle);
+        // const sin = Math.sin(angle);
+        // const cos = Math.cos(angle);
         // let sin = 0, cos = 1;
         assert(angle >= 0 && angle <= 360, "Invalid angle, please clamp first: " + angle);
 
@@ -598,7 +603,7 @@ export class Vector {
      * @returns {Boolean}
      */
     equalsEpsilon(v, epsilon = 1e-5) {
-        return Math_abs(this.x - v.x) < 1e-5 && Math_abs(this.y - v.y) < epsilon;
+        return Math.abs(this.x - v.x) < 1e-5 && Math.abs(this.y - v.y) < epsilon;
     }
 
     /**
@@ -606,7 +611,7 @@ export class Vector {
      * @returns {number} 0 .. 2 PI
      */
     angle() {
-        return Math_atan2(this.y, this.x) + Math_PI / 2;
+        return Math.atan2(this.y, this.x) + Math.PI / 2;
     }
 
     /**
@@ -638,7 +643,7 @@ export class Vector {
      */
     static deserializeTileFromInt(i) {
         const x = i % 256;
-        const y = Math_floor(i / 256);
+        const y = Math.floor(i / 256);
         return new Vector(x, y);
     }
 

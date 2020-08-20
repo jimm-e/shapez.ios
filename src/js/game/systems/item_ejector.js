@@ -1,12 +1,14 @@
 import { globalConfig } from "../../core/config";
 import { DrawParameters } from "../../core/draw_parameters";
-import { enumDirectionToVector, Vector } from "../../core/vector";
+import { createLogger } from "../../core/logging";
+import { Rectangle } from "../../core/rectangle";
+import { enumDirection, enumDirectionToVector, Vector } from "../../core/vector";
 import { BaseItem } from "../base_item";
 import { ItemEjectorComponent } from "../components/item_ejector";
 import { Entity } from "../entity";
 import { GameSystemWithFilter } from "../game_system_with_filter";
-import { Math_min } from "../../core/builtins";
-import { createLogger } from "../../core/logging";
+import { enumItemProcessorTypes } from "../components/item_processor";
+import { MapChunkView } from "../map_chunk_view";
 
 const logger = createLogger("systems/ejector");
 
@@ -14,58 +16,150 @@ export class ItemEjectorSystem extends GameSystemWithFilter {
     constructor(root) {
         super(root, [ItemEjectorComponent]);
 
+        this.root.signals.entityAdded.add(this.checkForCacheInvalidation, this);
+        this.root.signals.entityDestroyed.add(this.checkForCacheInvalidation, this);
+        this.root.signals.postLoadHook.add(this.recomputeCache, this);
+
         /**
-         * @type {Array<{
-         *  targetEntity: Entity,
-         *  sourceSlot: import("../components/item_ejector").ItemEjectorSlot,
-         *  destSlot: import("../components/item_acceptor").ItemAcceptorLocatedSlot
-         * }>}
+         * @type {Rectangle}
          */
-        this.cache = [];
-
-        this.cacheNeedsUpdate = true;
-
-        this.root.signals.entityAdded.add(this.invalidateCache, this);
-        this.root.signals.entityDestroyed.add(this.invalidateCache, this);
+        this.areaToRecompute = null;
     }
 
-    invalidateCache() {
-        this.cacheNeedsUpdate = true;
+    /**
+     *
+     * @param {Entity} entity
+     */
+    checkForCacheInvalidation(entity) {
+        if (!this.root.gameInitialized) {
+            return;
+        }
+        if (!entity.components.StaticMapEntity) {
+            return;
+        }
+
+        // Optimize for the common case: adding or removing one building at a time. Clicking
+        // and dragging can cause up to 4 add/remove signals.
+        const staticComp = entity.components.StaticMapEntity;
+        const bounds = staticComp.getTileSpaceBounds();
+        const expandedBounds = bounds.expandedInAllDirections(2);
+
+        if (this.areaToRecompute) {
+            this.areaToRecompute = this.areaToRecompute.getUnion(expandedBounds);
+        } else {
+            this.areaToRecompute = expandedBounds;
+        }
     }
 
     /**
      * Precomputes the cache, which makes up for a huge performance improvement
      */
     recomputeCache() {
-        logger.log("Recomputing cache");
+        if (this.areaToRecompute) {
+            logger.log("Recomputing cache using rectangle");
+            if (G_IS_DEV && globalConfig.debug.renderChanges) {
+                this.root.hud.parts.changesDebugger.renderChange(
+                    "ejector-area",
+                    this.areaToRecompute,
+                    "#fe50a6"
+                );
+            }
+            this.recomputeAreaCache();
+            this.areaToRecompute = null;
+        } else {
+            logger.log("Full cache recompute");
+            if (G_IS_DEV && globalConfig.debug.renderChanges) {
+                this.root.hud.parts.changesDebugger.renderChange(
+                    "ejector-full",
+                    new Rectangle(-1000, -1000, 2000, 2000),
+                    "#fe50a6"
+                );
+            }
 
-        const cache = [];
+            // Try to find acceptors for every ejector
+            for (let i = 0; i < this.allEntities.length; ++i) {
+                const entity = this.allEntities[i];
+                this.recomputeSingleEntityCache(entity);
+            }
+        }
+    }
 
-        // Try to find acceptors for every ejector
-        for (let i = 0; i < this.allEntities.length; ++i) {
-            const entity = this.allEntities[i];
-            const ejectorComp = entity.components.ItemEjector;
-            const staticComp = entity.components.StaticMapEntity;
+    /**
+     * Recomputes the cache in the given area
+     */
+    recomputeAreaCache() {
+        const area = this.areaToRecompute;
+        let entryCount = 0;
 
-            // For every ejector slot, try to find an acceptor
-            for (let ejectorSlotIndex = 0; ejectorSlotIndex < ejectorComp.slots.length; ++ejectorSlotIndex) {
-                const ejectorSlot = ejectorComp.slots[ejectorSlotIndex];
+        logger.log("Recomputing area:", area.x, area.y, "/", area.w, area.h);
 
-                // Figure out where and into which direction we eject items
-                const ejectSlotWsTile = staticComp.localTileToWorld(ejectorSlot.pos);
-                const ejectSlotWsDirection = staticComp.localDirectionToWorld(ejectorSlot.direction);
-                const ejectSlotWsDirectionVector = enumDirectionToVector[ejectSlotWsDirection];
-                const ejectSlotTargetWsTile = ejectSlotWsTile.add(ejectSlotWsDirectionVector);
+        // Store the entities we already recomputed, so we don't do work twice
+        const recomputedEntities = new Set();
 
-                // Try to find the given acceptor component to take the item
-                const targetEntity = this.root.map.getTileContent(ejectSlotTargetWsTile);
-                if (!targetEntity) {
-                    // No consumer for item
-                    continue;
+        for (let x = area.x; x < area.right(); ++x) {
+            for (let y = area.y; y < area.bottom(); ++y) {
+                const entities = this.root.map.getLayersContentsMultipleXY(x, y);
+                for (let i = 0; i < entities.length; ++i) {
+                    const entity = entities[i];
+
+                    // Recompute the entity in case its relevant for this system and it
+                    // hasn't already been computed
+                    if (!recomputedEntities.has(entity.uid) && entity.components.ItemEjector) {
+                        recomputedEntities.add(entity.uid);
+                        this.recomputeSingleEntityCache(entity);
+                    }
+                }
+            }
+        }
+        return entryCount;
+    }
+
+    /**
+     * @param {Entity} entity
+     */
+    recomputeSingleEntityCache(entity) {
+        const ejectorComp = entity.components.ItemEjector;
+        const staticComp = entity.components.StaticMapEntity;
+
+        for (let slotIndex = 0; slotIndex < ejectorComp.slots.length; ++slotIndex) {
+            const ejectorSlot = ejectorComp.slots[slotIndex];
+
+            // Clear the old cache.
+            ejectorSlot.cachedDestSlot = null;
+            ejectorSlot.cachedTargetEntity = null;
+            ejectorSlot.cachedBeltPath = null;
+
+            // Figure out where and into which direction we eject items
+            const ejectSlotWsTile = staticComp.localTileToWorld(ejectorSlot.pos);
+            const ejectSlotWsDirection = staticComp.localDirectionToWorld(ejectorSlot.direction);
+            const ejectSlotWsDirectionVector = enumDirectionToVector[ejectSlotWsDirection];
+            const ejectSlotTargetWsTile = ejectSlotWsTile.add(ejectSlotWsDirectionVector);
+
+            // Try to find the given acceptor component to take the item
+            // Since there can be cross layer dependencies, check on all layers
+            const targetEntities = this.root.map.getLayersContentsMultipleXY(
+                ejectSlotTargetWsTile.x,
+                ejectSlotTargetWsTile.y
+            );
+
+            for (let i = 0; i < targetEntities.length; ++i) {
+                const targetEntity = targetEntities[i];
+
+                const targetStaticComp = targetEntity.components.StaticMapEntity;
+                const targetBeltComp = targetEntity.components.Belt;
+
+                // Check for belts (special case)
+                if (targetBeltComp) {
+                    const beltAcceptingDirection = targetStaticComp.localDirectionToWorld(enumDirection.top);
+                    if (ejectSlotWsDirection === beltAcceptingDirection) {
+                        ejectorSlot.cachedTargetEntity = targetEntity;
+                        ejectorSlot.cachedBeltPath = targetBeltComp.assignedPath;
+                        break;
+                    }
                 }
 
+                // Check for item acceptors
                 const targetAcceptorComp = targetEntity.components.ItemAcceptor;
-                const targetStaticComp = targetEntity.components.StaticMapEntity;
                 if (!targetAcceptorComp) {
                     // Entity doesn't accept items
                     continue;
@@ -81,63 +175,88 @@ export class ItemEjectorSystem extends GameSystemWithFilter {
                     continue;
                 }
 
-                // Ok we found a connection
-                cache.push({
-                    targetEntity,
-                    sourceSlot: ejectorSlot,
-                    destSlot: matchingSlot,
-                });
+                // A slot can always be connected to one other slot only
+                ejectorSlot.cachedTargetEntity = targetEntity;
+                ejectorSlot.cachedDestSlot = matchingSlot;
+                break;
             }
         }
-
-        this.cache = cache;
-        logger.log("Found", cache.length, "entries to update");
     }
 
     update() {
-        if (this.cacheNeedsUpdate) {
-            this.cacheNeedsUpdate = false;
+        if (this.areaToRecompute) {
             this.recomputeCache();
         }
 
         // Precompute effective belt speed
-        const effectiveBeltSpeed = this.root.hubGoals.getBeltBaseSpeed() * globalConfig.itemSpacingOnBelts;
-        let progressGrowth = (effectiveBeltSpeed / 0.5) * this.root.dynamicTickrate.deltaSeconds;
+        let progressGrowth = 2 * this.root.dynamicTickrate.deltaSeconds;
 
         if (G_IS_DEV && globalConfig.debug.instantBelts) {
             progressGrowth = 1;
         }
 
         // Go over all cache entries
-        for (let i = 0; i < this.cache.length; ++i) {
-            const { sourceSlot, destSlot, targetEntity } = this.cache[i];
-            const item = sourceSlot.item;
-
-            if (!item) {
-                // No item available to be ejected
+        for (let i = 0; i < this.allEntities.length; ++i) {
+            const sourceEntity = this.allEntities[i];
+            const sourceEjectorComp = sourceEntity.components.ItemEjector;
+            if (!sourceEjectorComp.enabled) {
                 continue;
             }
 
-            // Advance items on the slot
-            sourceSlot.progress = Math_min(1, sourceSlot.progress + progressGrowth);
+            const slots = sourceEjectorComp.slots;
+            for (let j = 0; j < slots.length; ++j) {
+                const sourceSlot = slots[j];
+                const item = sourceSlot.item;
+                if (!item) {
+                    // No item available to be ejected
+                    continue;
+                }
 
-            // Check if we are still in the process of ejecting, can't proceed then
-            if (sourceSlot.progress < 1.0) {
-                continue;
-            }
+                const targetEntity = sourceSlot.cachedTargetEntity;
 
-            // Check if the target acceptor can actually accept this item
-            const targetAcceptorComp = targetEntity.components.ItemAcceptor;
-            if (!targetAcceptorComp.canAcceptItem(destSlot.index, item)) {
-                continue;
-            }
+                // Advance items on the slot
+                sourceSlot.progress = Math.min(
+                    1,
+                    sourceSlot.progress +
+                        progressGrowth *
+                            this.root.hubGoals.getBeltBaseSpeed() *
+                            globalConfig.itemSpacingOnBelts
+                );
 
-            // Try to hand over the item
-            if (this.tryPassOverItem(item, targetEntity, destSlot.index)) {
-                // Handover successful, clear slot
-                targetAcceptorComp.onItemAccepted(destSlot.index, destSlot.acceptedDirection, item);
-                sourceSlot.item = null;
-                continue;
+                // Check if we are still in the process of ejecting, can't proceed then
+                if (sourceSlot.progress < 1.0) {
+                    continue;
+                }
+
+                // Check if we are ejecting to a belt path
+                const destPath = sourceSlot.cachedBeltPath;
+                if (destPath) {
+                    // Try passing the item over
+                    if (destPath.tryAcceptItem(item)) {
+                        sourceSlot.item = null;
+                    }
+
+                    // Always stop here, since there can *either* be a belt path *or*
+                    // a slot
+                    continue;
+                }
+
+                // Check if the target acceptor can actually accept this item
+                const destSlot = sourceSlot.cachedDestSlot;
+                if (destSlot) {
+                    const targetAcceptorComp = targetEntity.components.ItemAcceptor;
+                    if (!targetAcceptorComp.canAcceptItem(destSlot.index, item)) {
+                        continue;
+                    }
+
+                    // Try to hand over the item
+                    if (this.tryPassOverItem(item, targetEntity, destSlot.index)) {
+                        // Handover successful, clear slot
+                        targetAcceptorComp.onItemAccepted(destSlot.index, destSlot.acceptedDirection, item);
+                        sourceSlot.item = null;
+                        continue;
+                    }
+                }
             }
         }
     }
@@ -155,28 +274,35 @@ export class ItemEjectorSystem extends GameSystemWithFilter {
 
         const beltComp = receiver.components.Belt;
         if (beltComp) {
-            // Ayy, its a belt!
-            if (beltComp.canAcceptItem()) {
-                beltComp.takeItem(item);
+            const path = beltComp.assignedPath;
+            assert(path, "belt has no path");
+            if (path.tryAcceptItem(item)) {
                 return true;
             }
-        }
-
-        const storageComp = receiver.components.Storage;
-        if (storageComp) {
-            // It's a storage
-            if (storageComp.canAcceptItem(item)) {
-                storageComp.takeItem(item);
-                return true;
-            }
+            // Belt can have nothing else
+            return false;
         }
 
         const itemProcessorComp = receiver.components.ItemProcessor;
         if (itemProcessorComp) {
+            // @todo HACK
+            // Check if there are pins, and if so if they are connected
+            if (itemProcessorComp.type === enumItemProcessorTypes.filter) {
+                const pinsComp = receiver.components.WiredPins;
+                if (pinsComp && pinsComp.slots.length === 1) {
+                    const network = pinsComp.slots[0].linkedNetwork;
+                    if (!network || !network.currentValue) {
+                        return false;
+                    }
+                }
+            }
+
             // Its an item processor ..
             if (itemProcessorComp.tryTakeItem(item, slotIndex)) {
                 return true;
             }
+            // Item processor can have nothing else
+            return false;
         }
 
         const undergroundBeltComp = receiver.components.UndergroundBelt;
@@ -190,51 +316,73 @@ export class ItemEjectorSystem extends GameSystemWithFilter {
             ) {
                 return true;
             }
+
+            // Underground belt can have nothing else
+            return false;
+        }
+
+        const storageComp = receiver.components.Storage;
+        if (storageComp) {
+            // It's a storage
+            if (storageComp.canAcceptItem(item)) {
+                storageComp.takeItem(item);
+                return true;
+            }
+
+            // Storage can't have anything else
+            return false;
         }
 
         return false;
     }
 
-    draw(parameters) {
-        this.forEachMatchingEntityOnScreen(parameters, this.drawSingleEntity.bind(this));
-    }
-
     /**
      * @param {DrawParameters} parameters
-     * @param {Entity} entity
+     * @param {MapChunkView} chunk
      */
-    drawSingleEntity(parameters, entity) {
-        const ejectorComp = entity.components.ItemEjector;
-        const staticComp = entity.components.StaticMapEntity;
+    drawChunk(parameters, chunk) {
+        const contents = chunk.containedEntitiesByLayer.regular;
 
-        if (!staticComp.shouldBeDrawn(parameters)) {
-            return;
-        }
-
-        for (let i = 0; i < ejectorComp.slots.length; ++i) {
-            const slot = ejectorComp.slots[i];
-            const ejectedItem = slot.item;
-            if (!ejectedItem) {
-                // No item
+        for (let i = 0; i < contents.length; ++i) {
+            const entity = contents[i];
+            const ejectorComp = entity.components.ItemEjector;
+            if (!ejectorComp) {
                 continue;
             }
 
-            const realPosition = slot.pos.rotateFastMultipleOf90(staticComp.rotation);
-            const realDirection = Vector.transformDirectionFromMultipleOf90(
-                slot.direction,
-                staticComp.rotation
-            );
-            const realDirectionVector = enumDirectionToVector[realDirection];
+            const staticComp = entity.components.StaticMapEntity;
 
-            const tileX =
-                staticComp.origin.x + realPosition.x + 0.5 + realDirectionVector.x * 0.5 * slot.progress;
-            const tileY =
-                staticComp.origin.y + realPosition.y + 0.5 + realDirectionVector.y * 0.5 * slot.progress;
+            for (let i = 0; i < ejectorComp.slots.length; ++i) {
+                const slot = ejectorComp.slots[i];
+                const ejectedItem = slot.item;
 
-            const worldX = tileX * globalConfig.tileSize;
-            const worldY = tileY * globalConfig.tileSize;
+                if (!ejectedItem) {
+                    // No item
+                    continue;
+                }
 
-            ejectedItem.draw(worldX, worldY, parameters);
+                const realPosition = staticComp.localTileToWorld(slot.pos);
+                if (!chunk.tileSpaceRectangle.containsPoint(realPosition.x, realPosition.y)) {
+                    // Not within this chunk
+                    continue;
+                }
+
+                const realDirection = staticComp.localDirectionToWorld(slot.direction);
+                const realDirectionVector = enumDirectionToVector[realDirection];
+
+                const tileX = realPosition.x + 0.5 + realDirectionVector.x * 0.5 * slot.progress;
+                const tileY = realPosition.y + 0.5 + realDirectionVector.y * 0.5 * slot.progress;
+
+                const worldX = tileX * globalConfig.tileSize;
+                const worldY = tileY * globalConfig.tileSize;
+
+                ejectedItem.drawItemCenteredClipped(
+                    worldX,
+                    worldY,
+                    parameters,
+                    globalConfig.defaultItemDiameter
+                );
+            }
         }
     }
 }

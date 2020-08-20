@@ -1,4 +1,3 @@
-import { Math_min } from "../../../core/builtins";
 import { ClickDetector } from "../../../core/click_detector";
 import { InputReceiver } from "../../../core/input_receiver";
 import { formatBigNumber, makeDiv } from "../../../core/utils";
@@ -79,6 +78,7 @@ export class HUDShop extends BaseHUDPart {
                 const requiredHandle = handle.requireIndexToElement[i];
                 requiredHandle.container.remove();
                 requiredHandle.pinDetector.cleanup();
+                requiredHandle.infoDetector.cleanup();
             }
 
             // Cleanup
@@ -122,6 +122,10 @@ export class HUDShop extends BaseHUDPart {
                 pinButton.classList.add("pin");
                 container.appendChild(pinButton);
 
+                const viewInfoButton = document.createElement("button");
+                viewInfoButton.classList.add("showInfo");
+                container.appendChild(viewInfoButton);
+
                 const currentGoalShape = this.root.hubGoals.currentGoal.definition.getHash();
                 if (shape === currentGoalShape) {
                     pinButton.classList.add("isGoal");
@@ -145,6 +149,14 @@ export class HUDShop extends BaseHUDPart {
                     }
                 });
 
+                const infoDetector = new ClickDetector(viewInfoButton, {
+                    consumeEvents: true,
+                    preventDefault: true,
+                });
+                infoDetector.click.add(() =>
+                    this.root.hud.signals.viewShapeDetailsRequested.dispatch(shapeDef)
+                );
+
                 handle.requireIndexToElement.push({
                     container,
                     progressLabel,
@@ -152,6 +164,7 @@ export class HUDShop extends BaseHUDPart {
                     definition: shapeDef,
                     required: amount,
                     pinDetector,
+                    infoDetector,
                 });
             });
         }
@@ -164,7 +177,7 @@ export class HUDShop extends BaseHUDPart {
                 const { progressLabel, progressBar, definition, required } = handle.requireIndexToElement[i];
 
                 const haveAmount = this.root.hubGoals.getShapesStored(definition);
-                const progress = Math_min(haveAmount / required, 1.0);
+                const progress = Math.min(haveAmount / required, 1.0);
 
                 progressLabel.innerText = formatBigNumber(haveAmount) + " / " + formatBigNumber(required);
                 progressBar.style.width = progress * 100.0 + "%";
@@ -184,6 +197,7 @@ export class HUDShop extends BaseHUDPart {
         this.keyActionMapper = new KeyActionMapper(this.root, this.inputReciever);
 
         this.keyActionMapper.getBinding(KEYMAPPINGS.general.back).add(this.close, this);
+        this.keyActionMapper.getBinding(KEYMAPPINGS.ingame.menuClose).add(this.close, this);
         this.keyActionMapper.getBinding(KEYMAPPINGS.ingame.menuOpenShop).add(this.close, this);
 
         this.close();
@@ -202,6 +216,7 @@ export class HUDShop extends BaseHUDPart {
                 const requiredHandle = handle.requireIndexToElement[i];
                 requiredHandle.container.remove();
                 requiredHandle.pinDetector.cleanup();
+                requiredHandle.infoDetector.cleanup();
             }
             handle.requireIndexToElement = [];
         }
@@ -231,6 +246,6 @@ export class HUDShop extends BaseHUDPart {
 
     tryUnlockNextTier(upgradeId) {
         // Nothing
-        this.root.hubGoals.tryUnlockUgprade(upgradeId);
+        this.root.hubGoals.tryUnlockUpgrade(upgradeId);
     }
 }

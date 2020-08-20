@@ -1,4 +1,3 @@
-import { Math_min } from "../../core/builtins";
 import { globalConfig, IS_DEMO, IS_MOBILE } from "../../core/config";
 import { createLogger } from "../../core/logging";
 import { queryParamOptions } from "../../core/query_parameters";
@@ -96,6 +95,7 @@ export class PlatformWrapperImplBrowser extends PlatformWrapperInterface {
                 request = window.indexedDB.open("indexeddb_feature_detection", 1);
             } catch (ex) {
                 logger.warn("Error while opening indexed db:", ex);
+                this.app.storage = new StorageImplBrowser(this.app);
                 resolve();
                 return;
             }
@@ -130,7 +130,7 @@ export class PlatformWrapperImplBrowser extends PlatformWrapperInterface {
             return 1;
         }
 
-        const avgDims = Math_min(this.app.screenWidth, this.app.screenHeight);
+        const avgDims = Math.min(this.app.screenWidth, this.app.screenHeight);
         return clamp((avgDims / 1000.0) * 1.9, 0.1, 10);
     }
 
